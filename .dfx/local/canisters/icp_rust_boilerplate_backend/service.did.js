@@ -14,13 +14,27 @@ export const idlFactory = ({ IDL }) => {
     'is_available' : IDL.Bool,
     'location' : IDL.Text,
   });
+  const Query = IDL.Variant({ 'GetItem' : IDL.Nat64 });
   const Error = IDL.Variant({ 'NotFound' : IDL.Record({ 'msg' : IDL.Text }) });
+  const QueryResult = IDL.Variant({
+    'Error' : Error,
+    'Item' : SmartStorageItem,
+  });
+  const ChangeRecord = IDL.Record({
+    'change_type' : IDL.Text,
+    'timestamp' : IDL.Nat64,
+  });
+  const ItemStatistics = IDL.Record({
+    'total_items' : IDL.Nat64,
+    'average_availability_rate' : IDL.Float64,
+  });
   return IDL.Service({
     'add_smart_storage_item' : IDL.Func(
         [SmartStorageItemPayload],
         [IDL.Opt(SmartStorageItem)],
         [],
       ),
+    'batch_query' : IDL.Func([IDL.Vec(Query)], [IDL.Vec(QueryResult)], []),
     'delete_smart_storage_item' : IDL.Func(
         [IDL.Nat64],
         [IDL.Variant({ 'Ok' : SmartStorageItem, 'Err' : Error })],
@@ -36,6 +50,8 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(SmartStorageItem)],
         [],
       ),
+    'get_item_history' : IDL.Func([IDL.Nat64], [IDL.Vec(ChangeRecord)], []),
+    'get_item_statistics' : IDL.Func([], [ItemStatistics], []),
     'get_smart_storage_item' : IDL.Func(
         [IDL.Nat64],
         [IDL.Variant({ 'Ok' : SmartStorageItem, 'Err' : Error })],
@@ -61,6 +77,7 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(SmartStorageItem)],
         [],
       ),
+    'sort_items_by_name' : IDL.Func([], [IDL.Vec(SmartStorageItem)], []),
     'update_smart_storage_item' : IDL.Func(
         [IDL.Nat64, SmartStorageItemPayload],
         [IDL.Variant({ 'Ok' : SmartStorageItem, 'Err' : Error })],

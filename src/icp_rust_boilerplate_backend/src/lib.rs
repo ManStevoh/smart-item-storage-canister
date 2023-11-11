@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate serde;
+
 use candid::{Decode, Encode};
 use ic_cdk::api::time;
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
@@ -83,7 +84,6 @@ fn get_all_smart_storage_items() -> Vec<SmartStorageItem> {
 
 #[ic_cdk::query]
 fn get_available_smart_storage_items() -> Vec<SmartStorageItem> {
-    // Assuming the type of STORAGE_ITEM_STORAGE is Ref<'_, BTreeMap<u64, SmartStorageItem, VirtualMemory<Rc<RefCell<Vec<u8>>>>>>
     STORAGE_ITEM_STORAGE.with(|service| {
         service
             .borrow()
@@ -126,6 +126,7 @@ fn add_smart_storage_item(item: SmartStorageItemPayload) -> Option<SmartStorageI
     do_insert_smart_storage_item(&storage_item);
     Some(storage_item)
 }
+
 #[ic_cdk::update]
 fn update_smart_storage_item(id: u64, payload: SmartStorageItemPayload) -> Result<SmartStorageItem, Error> {
     match STORAGE_ITEM_STORAGE.with(|service| service.borrow_mut().get(&id)) {
@@ -214,6 +215,106 @@ fn _get_smart_storage_item(id: &u64) -> Option<SmartStorageItem> {
     StableBTreeMap::<u64, SmartStorageItem, Memory>::init(item_storage)
         .borrow()
         .get(id)
+}
+
+#[derive(candid::CandidType, Serialize, Deserialize)]
+struct ChangeRecord {
+    timestamp: u64,
+    change_type: String, // You can use an enum for specific change types
+}
+
+#[derive(candid::CandidType, Serialize, Deserialize, Default)]
+struct ItemStatistics {
+    total_items: usize,
+    average_availability_rate: f64,
+}
+
+#[ic_cdk::query]
+fn sort_items_by_name() -> Vec<SmartStorageItem> {
+    let mut items = STORAGE_ITEM_STORAGE.with(|service| {
+        service
+            .borrow()
+            .iter()
+            .map(|(_, item)| item.clone())
+            .collect::<Vec<_>>()
+    });
+
+    items.sort_by(|a, b| a.name.cmp(&b.name));
+    items
+}
+
+#[ic_cdk::query]
+fn get_item_history(id: u64) -> Vec<ChangeRecord> {
+    match _get_smart_storage_item(&id) {
+        Some(item) => {
+            let mut history = Vec::new();
+            if let Some(updated_at) = item.updated_at {
+                history.push(ChangeRecord {
+                    timestamp: updated_at,
+                    change_type: "Update".to_string(),
+                });
+            }
+            history.push(ChangeRecord {
+                timestamp: item.created_at,
+                change_type: "Creation".to_string(),
+            });
+            history
+        }
+        None => Vec::new(),
+    }
+}
+
+#[ic_cdk::query]
+fn batch_query(queries: Vec<Query>) -> Vec<QueryResult> {
+    let mut results = Vec::new();
+    for query in queries {
+        match query {
+            Query::GetItem(id) => {
+                if let Some(item) = _get_smart_storage_item(&id) {
+                    results.push(QueryResult::Item(item));
+                } else {
+                    results.push(QueryResult::Error(Error::NotFound {
+                        msg: format!("an item with id={} not found", id),
+                    }));
+                }
+            }
+            // Add more query types as needed
+        }
+    }
+    results
+}
+
+#[derive(candid::CandidType, Serialize, Deserialize)]
+enum Query {
+    GetItem(u64),
+    // Add more query types as needed
+}
+
+#[derive(candid::CandidType, Serialize, Deserialize)]
+enum QueryResult {
+    Item(SmartStorageItem),
+    Error(Error),
+}
+
+#[ic_cdk::query]
+fn get_item_statistics() -> ItemStatistics {
+    let items = STORAGE_ITEM_STORAGE.with(|service| {
+        service
+            .borrow()
+            .iter()
+            .map(|(_, item)| item.clone())
+            .collect::<Vec<_>>()
+    });
+
+    let total_items = items.len();
+    let total_available_items = items.iter().filter(|item| item.is_available).count();
+    let average_availability_rate =
+        total_available_items as f64 / total_items as f64 * 100.0; // Calculate as a percentage
+
+    ItemStatistics {
+        total_items,
+        average_availability_rate,
+    }
 }
 
 ic_cdk::export_candid!();
